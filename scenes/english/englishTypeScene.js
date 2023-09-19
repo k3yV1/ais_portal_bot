@@ -1,5 +1,5 @@
 const { Scenes } = require('telegraf');
-const { Builder, By, Key, until } = require('selenium-webdriver')
+const { Builder, By, Key, until, Select} = require('selenium-webdriver')
 
 // islamberdiev18@gmail.com
 // Welcome123!
@@ -46,10 +46,26 @@ async function openWebSite(driver, login, password) {
 					const accordionContent = await driver.findElement(By.className('accordion-content'));
 					const medium10Columns = await accordionContent.findElement(By.className('medium-10 columns'));
 					await driver.executeScript("arguments[0].style.backgroundColor = 'red';", medium10Columns);
+					const aElement = await medium10Columns.findElement(By.xpath("//p/a"));
+					const aElementValue = await aElement.getAttribute('href');
+					await driver.get(aElementValue);
 
-					// Внутри 'medium-10 columns' найти элемент 'p' и затем 'a' с ссылкой
-					// const linkElement = await medium10Columns.findElement(By.tagName('p')).findElement(By.tagName('a'));
-					// await linkElement.click();
+					const sectionLocation = await driver.findElement(By.id('appointments_consulate_appointment_facility_id_input'))
+					await driver.executeScript("arguments[0].style.backgroundColor = 'red';", sectionLocation);
+					const select = await new Select(sectionLocation);
+
+					// Определите, как выбирать одну из двух стран на основе значения selectedLocation
+					if (selectedLocation === 'Location 1') {
+						await select.selectByVisibleText('Country 1');
+					} else if (selectedLocation === 'Location 2') {
+						await select.selectByVisibleText('Country 2');
+					}
+
+
+					// const select = await sectionLocation.findElement(By.tagName('select'));
+
+					// await select.click();
+
 					await driver.sleep(30000); // 30 sec
 				} catch (e) {
 					console.log('Ошибка при клике на ссылке или записи данных: ', e);
