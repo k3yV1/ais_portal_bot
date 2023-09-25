@@ -1,6 +1,8 @@
 const { Telegraf, session, Markup, Scenes } = require("telegraf");
-const englishScene = require('../scenes/english/englishTypeScene');
-const stage = new Scenes.Stage([englishScene])
+const WizardEnglishScene = require('../scenes/english/englishTypeScene');
+const englishTypeScene = new WizardEnglishScene().scene;
+
+const stage = new Scenes.Stage([englishTypeScene])
 class TelegramBot {
 	constructor(apiToken) {
 		this.bot = new Telegraf(apiToken);
@@ -21,7 +23,7 @@ class TelegramBot {
 		})
 
 		this.bot.hears('Turkey', async (ctx) => {
-			await ctx.reply('Message from Turkey button')
+      await ctx.scene.enter('turkishTypeScene').catch(err => console.log(err))
 		})
 
 		this.bot.launch().then(() => {
