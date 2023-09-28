@@ -25,7 +25,7 @@ class WizardEnglishScene {
 
   sceneMethods() {
     const enterLogin = async (ctx) => {
-      await ctx.reply('Введите логин');
+      await ctx.reply('Enter login');
       // ctx.wizard.state.isLogin = true; // Устанавливаем флаг, что мы ждем логин
 
       return ctx.wizard.next();
@@ -35,7 +35,7 @@ class WizardEnglishScene {
       // if (ctx.wizard.state.loginStep) {
         ctx.session.login = ctx.message.text;
         // ctx.wizard.state.isLogin = false; // Снимаем флаг после получения логина
-        await ctx.reply('Введите пароль');
+        await ctx.reply('Enter password');
         // ctx.wizard.state.isPassword = true
 
         return ctx.wizard.next();
@@ -50,20 +50,20 @@ class WizardEnglishScene {
 
         return `<code>${city}</code>${breakChar}`;
       }).join('');
-      await ctx.replyWithHTML(`Выберите город:\n\n${citiesData}`);
+      await ctx.replyWithHTML(`Choose city:\n\n${citiesData}`);
       return ctx.wizard.next();
     }
 
     const enterDatePeriod = async (ctx) => {
       ctx.session.city = ctx.message.text;
-      await ctx.reply('Введите период собеседования в формате dd.mm.yyyy-dd.mm.yyyy');
+      await ctx.reply('Enter appointment period in format dd.mm.yyyy-dd.mm.yyyy');
       return ctx.wizard.next();
     }
 
     const enterStopSearch = async (ctx) => {
       ctx.session.period = ctx.message.text;
 
-      await ctx.reply('Введите за сколько дней останавливать поиск');
+      await ctx.reply('Enter for how many days stop searching appointment');
       return ctx.wizard.next();
     }
 
@@ -132,6 +132,7 @@ class WizardEnglishScene {
       const botData = `<b>${labels[0]}</b>\n${strongs[0]}\n\n<b>${labels[1]}</b>\n${strongs[1]}\n\n${applicantCardText}`;
 
       await this.botCTX.replyWithHTML(`${botData}`);
+      await this.driver.quit();
       // return ctx.scene.leave();
     }
 

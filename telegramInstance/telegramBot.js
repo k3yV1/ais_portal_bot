@@ -1,8 +1,10 @@
 const { Telegraf, session, Markup, Scenes } = require("telegraf");
 const WizardEnglishScene = require('../scenes/english/englishTypeScene');
+const WizardTurkishScene = require('../scenes/english/turkishTypeScene');
 const englishTypeScene = new WizardEnglishScene();
+const turkishTypeScene = new WizardTurkishScene();
 
-const stage = new Scenes.Stage([englishTypeScene.scene])
+const stage = new Scenes.Stage([englishTypeScene.scene, turkishTypeScene.scene])
 class TelegramBot {
 	constructor(apiToken) {
 		this.bot = new Telegraf(apiToken);
@@ -12,9 +14,9 @@ class TelegramBot {
 
 	start() {
 		this.bot.command('start', async (ctx) => {
-			await ctx.reply('Привет! Для начала выберите страну и язык прохождения интервью');
+			await ctx.reply('Hi! First choose appointment language');
 			setTimeout(async () => {
-				await ctx.reply('Выберете язык прохождения интервью', Markup.keyboard([['Turkey', 'English']]).resize()).catch(error => console.log(error))
+				await ctx.reply('Choose appointment language', Markup.keyboard([['Turkish', 'English']]).resize()).catch(error => console.log(error))
 			}, 1000)
 		})
 
@@ -24,7 +26,9 @@ class TelegramBot {
 			await ctx.scene.enter('englishTypeScene').catch(err => console.log(err))
 		})
 
-		this.bot.hears('Turkey', async (ctx) => {
+		this.bot.hears('Turkish', async (ctx) => {
+      turkishTypeScene.setBotCtx(ctx);
+
       await ctx.scene.enter('turkishTypeScene').catch(err => console.log(err))
 		})
 
