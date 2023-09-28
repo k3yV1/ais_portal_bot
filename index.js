@@ -1,6 +1,6 @@
 require('dotenv').config()
 const TelegramBot = require('./telegramInstance/telegramBot')
-
+require('./cron');
 
 const bot = new TelegramBot(process.env.TELEGRAM_API)
 bot.start()
