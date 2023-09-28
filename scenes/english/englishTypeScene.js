@@ -12,9 +12,8 @@ class WizardEnglishScene {
     this.botCTX = null;
     this.driver = null;
     this.scene = this.init();
-    this.cron = new Cron({time: '*/1 * * * *'});
+    this.cron = new Cron({time: '*/10 * * * *'});
   }
-
 
   init() {
     return new Scenes.WizardScene('englishTypeScene', ...this.sceneMethods());
