@@ -15,7 +15,8 @@ class TelegramBot {
 	start() {
 		this.bot.command('start', async (ctx) => {
 			await ctx.reply('Hi! First choose appointment language');
-			setTimeout(async () => {
+      console.log("start");
+      setTimeout(async () => {
 				await ctx.reply('Choose appointment language', Markup.keyboard([['Turkish', 'English']]).resize()).catch(error => console.log(error))
 			}, 1000)
 		})

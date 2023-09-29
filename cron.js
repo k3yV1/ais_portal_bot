@@ -30,11 +30,13 @@ class Cron {
       },
     );
 
+    console.log("cron start");
     this.job.start();
     this.isRunningJob = true;
   }
 
   stop() {
+    console.log("cron stop");
     if(!this.isRunningJob) return;
 
     this.job.stop();

@@ -9,10 +9,11 @@ const Cron = require("../../cron");
 
 class WizardEnglishScene {
   constructor() {
-    this.botCTX = null;
-    this.driver = null;
+    this.storage = {};
+    // this.botCTX = null;
+    // this.driver = null;
     this.scene = this.init();
-    this.cron = new Cron({time: '*/10 * * * *'});
+    // this.cron = new Cron({time: '*/10 * * * *'});
   }
 
   init() {
@@ -20,29 +21,60 @@ class WizardEnglishScene {
   }
 
   setBotCtx(ctx) {
-    this.botCTX = ctx;
+    const userID = ctx.from.id;
+
+    if(!this.storage[userID]) {
+      this.storage[userID] = {};
+    }
+
+    this.storage[userID].botCTX = ctx;
+    this.storage[userID].cron = new Cron({time: '*/10 * * * *'});
+  }
+
+  async commandMiddleware(botCTX, text) {
+    if(!text.includes('/')) return {status: true};
+    console.log("commandMiddleware");
+
+    return this.quitScene(botCTX);
+  }
+
+  async quitScene(botCTX) {
+    console.log("quitScene start");
+    console.log(botCTX);
+    const userID = botCTX.from.id;
+    console.log("quitScene", userID);
+
+    if(this.storage[userID].driver) await this.storage[userID].driver.quit();
+
+    await this.storage[userID].botCTX.scene.leave();
+
+    return {status: false};
   }
 
   sceneMethods() {
     const enterLogin = async (ctx) => {
       await ctx.reply('Enter login');
-      // ctx.wizard.state.isLogin = true; // Устанавливаем флаг, что мы ждем логин
+      // ctx.wizard.state
 
       return ctx.wizard.next();
     }
 
     const enterPassword = async (ctx) => {
-      // if (ctx.wizard.state.loginStep) {
-        ctx.session.login = ctx.message.text;
-        // ctx.wizard.state.isLogin = false; // Снимаем флаг после получения логина
-        await ctx.reply('Enter password');
-        // ctx.wizard.state.isPassword = true
+      const {status} = await this.commandMiddleware(ctx, ctx.message.text);
 
-        return ctx.wizard.next();
-      // }
+      if(!status) return;
+
+      ctx.session.login = ctx.message.text;
+      await ctx.reply('Enter password');
+
+      return ctx.wizard.next();
     }
 
     const enterCity = async (ctx) => {
+      const {status} = await this.commandMiddleware(ctx, ctx.message.text);
+
+      if(!status) return;
+
       ctx.session.password = ctx.message.text;
 
       const citiesData = cities.map((city, index) => {
@@ -55,12 +87,20 @@ class WizardEnglishScene {
     }
 
     const enterDatePeriod = async (ctx) => {
+      const {status} = await this.commandMiddleware(ctx, ctx.message.text);
+
+      if(!status) return;
+
       ctx.session.city = ctx.message.text;
       await ctx.reply('Enter appointment period in format dd.mm.yyyy-dd.mm.yyyy');
       return ctx.wizard.next();
     }
 
     const enterStopSearch = async (ctx) => {
+      const {status} = await this.commandMiddleware(ctx, ctx.message.text);
+
+      if(!status) return;
+
       ctx.session.period = ctx.message.text;
 
       await ctx.reply('Enter for how many days stop searching appointment');
@@ -68,6 +108,11 @@ class WizardEnglishScene {
     }
 
     const connectToSelenium = async (ctx) => {
+      const userID = ctx.from.id;
+      const {status} = await this.commandMiddleware(ctx, ctx.message.text);
+
+      if(!status) return;
+
       ctx.session.stopDays = ctx.message.text;
 
       const login = ctx.session.login;
@@ -76,37 +121,43 @@ class WizardEnglishScene {
       const city = ctx.session.city;
       const stopDays = ctx.session.stopDays;
 
-      this.driver = new Builder().forBrowser('chrome').build()
+      this.storage[userID].driver = new Builder().forBrowser('chrome').build()
 
-      await this.openWebSite({login, password, period, city, stopDays});
+      this.openWebSite(ctx, {login, password, period, city, stopDays});
 
       return ctx.wizard.next();
     }
 
     const setTime = async (ctx) => {
+      const userID = ctx.from.id;
+      console.log("setTime", userID);
+      const {status} = await this.commandMiddleware(ctx, ctx.message.text);
+
+      if(!status) return;
+
       // if(ctx.wizard.state.dateTime) {
         const dateTime = ctx.message.text;
         const [date,time] = dateTime.split('|');
 
-        const sectionDate = await this.driver.findElement(By.id('appointments_consulate_appointment_date_input'));
+        const sectionDate = await this.storage[userID].driver.findElement(By.id('appointments_consulate_appointment_date_input'));
         await sectionDate.click();
-        await this.driver.sleep(750);
+        await this.storage[userID].driver.sleep(750);
 
-        await this.datepickerSearch(date);
+        await this.datepickerSearch(ctx, date);
 
-       await this.driver.sleep(2500);
+       await this.storage[userID].driver.sleep(2500);
 
-        const drpCountry = new Select(this.driver.findElement(By.id("appointments_consulate_appointment_time")));
+        const drpCountry = new Select(this.storage[userID].driver.findElement(By.id("appointments_consulate_appointment_time")));
         drpCountry.selectByVisibleText(time);
 
-        await this.driver.sleep(2000);
+        await this.storage[userID].driver.sleep(2000);
 
-        const submitButton = await this.driver.findElement(By.id('appointments_submit'));
+        const submitButton = await this.storage[userID].driver.findElement(By.id('appointments_submit'));
         await submitButton.click();
 
-        await this.driver.sleep(3000);
+        await this.storage[userID].driver.sleep(3000);
 
-        const applicantBlock = await this.driver.findElement(By.className("instructions_body_applicant"));
+        const applicantBlock = await this.storage[userID].driver.findElement(By.className("instructions_body_applicant"));
         const applicantCard = await applicantBlock.findElement(By.className('card'));
 
         const applicantCardLabels = await applicantCard.findElements(By.xpath(".//label"));
@@ -131,30 +182,33 @@ class WizardEnglishScene {
 
       const botData = `<b>${labels[0]}</b>\n${strongs[0]}\n\n<b>${labels[1]}</b>\n${strongs[1]}\n\n${applicantCardText}`;
 
-      await this.botCTX.replyWithHTML(`${botData}`);
-      await this.driver.quit();
-      // return ctx.scene.leave();
+      await this.storage[userID].botCTX.replyWithHTML(`${botData}`);
+
+      console.log("finish bot");
+      await this.quitScene(ctx);
     }
 
     return [enterLogin, enterPassword, enterCity, enterDatePeriod, enterStopSearch, connectToSelenium, setTime];
   }
 
-  async openWebSite({login, password, period, city, needAuth = true, stopDays}) {
+  async openWebSite(botCTX, {login, password, period, city, needAuth = true, stopDays}) {
+    const userID = botCTX.from.id;
+
     try {
-      await this.driver.get('https://ais.usvisa-info.com/en-us/countries_list/niv')
-      await this.driver.findElement(By.xpath("//a[@href='/en-tr/niv']")).click();
+      await this.storage[userID].driver.get('https://ais.usvisa-info.com/en-us/countries_list/niv')
+      await this.storage[userID].driver.findElement(By.xpath("//a[@href='/en-tr/niv']")).click();
 
       if(needAuth) {
-        await this.driver.findElement(By.linkText('Sign In')).click();
-        await this.driver.findElement(By.id('user_email')).sendKeys(`${login}`);
-        await this.driver.findElement(By.id('user_password')).sendKeys(`${password}`);
-        await this.driver.sleep(2000);
-        await this.driver.findElement(By.className('icheckbox')).click();
-        await this.driver.findElement(By.className('button primary')).click();
+        await this.storage[userID].driver.findElement(By.linkText('Sign In')).click();
+        await this.storage[userID].driver.findElement(By.id('user_email')).sendKeys(`${login}`);
+        await this.storage[userID].driver.findElement(By.id('user_password')).sendKeys(`${password}`);
+        await this.storage[userID].driver.sleep(2000);
+        await this.storage[userID].driver.findElement(By.className('icheckbox')).click();
+        await this.storage[userID].driver.findElement(By.className('button primary')).click();
 
-        await this.driver.sleep(2000)
+        await this.storage[userID].driver.sleep(2000)
       }
-      const cardElementsFromSite = await this.driver.findElements(By.className('alert application card ready_to_schedule'))
+      const cardElementsFromSite = await this.storage[userID].driver.findElements(By.className('alert application card ready_to_schedule'))
 
       const links = [];
 
@@ -176,29 +230,29 @@ class WizardEnglishScene {
 
       for (const link of links) {
         try {
-          await this.driver.get(link);
-          const h5Element = await this.driver.findElement(By.tagName('h5'));
+          await this.storage[userID].driver.get(link);
+          const h5Element = await this.storage[userID].driver.findElement(By.tagName('h5'));
           await h5Element.click();
 
-          const accordionContent = await this.driver.findElement(By.className('accordion-content'));
+          const accordionContent = await this.storage[userID].driver.findElement(By.className('accordion-content'));
           const medium10Columns = await accordionContent.findElement(By.className('medium-10 columns'));
-          await this.driver.executeScript("arguments[0].style.backgroundColor = 'red';", medium10Columns);
+          await this.storage[userID].driver.executeScript("arguments[0].style.backgroundColor = 'red';", medium10Columns);
           const aElement = await medium10Columns.findElement(By.xpath("//p/a"));
           const aElementValue = await aElement.getAttribute('href');
-          await this.driver.get(aElementValue);
+          await this.storage[userID].driver.get(aElementValue);
 
-          const sectionLocation = await this.driver.findElement(By.id('appointments_consulate_appointment_facility_id_input'));
-          await this.driver.executeScript("arguments[0].style.backgroundColor = 'red';", sectionLocation);
+          const sectionLocation = await this.storage[userID].driver.findElement(By.id('appointments_consulate_appointment_facility_id_input'));
+          await this.storage[userID].driver.executeScript("arguments[0].style.backgroundColor = 'red';", sectionLocation);
 
-          await this.driver.sleep(2500);
-          const select = new Select(this.driver.findElement(By.id("appointments_consulate_appointment_facility_id")));
+          await this.storage[userID].driver.sleep(2500);
+          const select = new Select(this.storage[userID].driver.findElement(By.id("appointments_consulate_appointment_facility_id")));
           select.selectByVisibleText(city);
 
-          await this.driver.sleep(2500);
+          await this.storage[userID].driver.sleep(2500);
 
-          const sectionDate = await this.driver.findElement(By.id('appointments_consulate_appointment_date_input'));
+          const sectionDate = await this.storage[userID].driver.findElement(By.id('appointments_consulate_appointment_date_input'));
           await sectionDate.click();
-          await this.driver.sleep(750);
+          await this.storage[userID].driver.sleep(750);
 
           const [startDate,endDate] = period?.split('-');
           const intervalDates = getDateIntervals(startDate,endDate);
@@ -206,11 +260,11 @@ class WizardEnglishScene {
           const datesArr = [];
 
           for (const date of intervalDates) {
-            const {status = 'fail'} = await this.datepickerSearch(date);
-            await this.driver.sleep(3000);
+            const {status = 'fail'} = await this.datepickerSearch(botCTX, date);
+            await this.storage[userID].driver.sleep(3000);
 
             if(status === 'success') {
-              const select = await this.driver.findElement(By.id('appointments_consulate_appointment_time'));
+              const select = await this.storage[userID].driver.findElement(By.id('appointments_consulate_appointment_time'));
               const options = await select.findElements(By.xpath(".//option"));
 
               const optionValues = [];
@@ -225,19 +279,19 @@ class WizardEnglishScene {
 
               datesArr.push(optionValues);
 
-              const sectionDate = await this.driver.findElement(By.id('appointments_consulate_appointment_date_input'));
+              const sectionDate = await this.storage[userID].driver.findElement(By.id('appointments_consulate_appointment_date_input'));
               await sectionDate.click();
-              await this.driver.sleep(750);
+              await this.storage[userID].driver.sleep(750);
             }
           }
 
           if(datesArr.length) {
             const botAdaptedData = datesArr?.map((optionValues) => optionValues?.map((value) => `\n<code>${value}</code>`).join('')).join('\n');
-            await this.botCTX.replyWithHTML(`<b>Доступные даты для записи:</b>\n${botAdaptedData}`);
-            this.cron.stop();
+            await this.storage[userID].botCTX.replyWithHTML(`<b>Доступные даты для записи:</b>\n${botAdaptedData}`);
+            this.storage[userID].cron.stop();
           } else {
-            this.cron.start(() => this.openWebSite({login, password, period, city, needAuth: false, stopDays}), {period, stopDays})
-            await this.botCTX.replyWithHTML(`<b>Свободного времени по данному диапазону не найдено :(</b>`);
+            this.storage[userID].cron.start(() => this.openWebSite(botCTX,{login, password, period, city, needAuth: false, stopDays}), {period, stopDays})
+            await this.storage[userID].botCTX.replyWithHTML(`<b>Свободного времени по данному диапазону не найдено :(</b>`);
           }
 
           // await this.driver.sleep(30000); // 30 sec
@@ -251,10 +305,11 @@ class WizardEnglishScene {
     }
   }
 
-  async datepickerSearch(date) {
+  async datepickerSearch(botCTX, date) {
+    const userID = botCTX.from.id;
     const [day, month, year] = date.split('.');
 
-    const datepicker = await this.driver.findElement(By.className('ui-datepicker'));
+    const datepicker = await this.storage[userID].driver.findElement(By.className('ui-datepicker'));
     const datepickerParts = await datepicker.findElements(By.className('ui-datepicker-group'));
 
     for (const [index, part] of datepickerParts.entries()) {
@@ -268,7 +323,7 @@ class WizardEnglishScene {
         const conditionIfMonthSmallerAndYearBigger = Number(month) < numericPartMonth && Number(year) > numericPartYear;
 
         if(Number(month) === numericPartMonth && numericPartYear === Number(year)) {
-          console.log("found");
+          // console.log("found");
           const dates = await part.findElements(By.xpath(".//td[@data-handler='selectDay']")) || [];
           const arr = [];
 
@@ -282,7 +337,7 @@ class WizardEnglishScene {
 
           if (activeDayIndex !== -1) {
             await dates[activeDayIndex].click();
-            console.log(`success = ${day}.${month}.${year}`);
+            // console.log(`success = ${day}.${month}.${year}`);
             return {status: 'success', date: `${day}.${month}.${year}`};
           }
 
@@ -294,9 +349,9 @@ class WizardEnglishScene {
         if(index === 0) continue;
 
         if(index === 1 && (conditionIfMonthBiggerAndYearEqualOrBigger || conditionIfMonthSmallerAndYearBigger)) {
-          await this.driver.findElement(By.className('ui-datepicker-next')).click();
-          console.log('not found');
-          return this.datepickerSearch(date);
+          await this.storage[userID].driver.findElement(By.className('ui-datepicker-next')).click();
+          // console.log('not found');
+          return this.datepickerSearch(botCTX, date);
         }
 
       } catch (e) {
