@@ -10,5 +10,10 @@ const getDateIntervals = (start, end) =>  {
     .splitBy({ day: 1 }).map(d => d.start.toFormat('dd.MM.yyyy'));
 }
 
+const chunkArray = (arr, size) =>
+  arr.length > size
+    ? [arr.slice(0, size), ...chunkArray(arr.slice(size), size)]
+    : [arr];
 
-module.exports = {getDateIntervals};
+
+module.exports = {getDateIntervals, chunkArray};

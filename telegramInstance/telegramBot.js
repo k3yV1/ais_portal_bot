@@ -14,24 +14,28 @@ class TelegramBot {
 
 	start() {
 		this.bot.command('start', async (ctx) => {
-			await ctx.reply('Hi! First choose appointment language');
-      console.log("start");
-      setTimeout(async () => {
-				await ctx.reply('Choose appointment language', Markup.keyboard([['Turkish', 'English']]).resize()).catch(error => console.log(error))
-			}, 1000)
-		})
+			await ctx.reply('Hi! For start searching appointment you need to pass some steps below.');
+      // console.log("start");
+      // setTimeout(async () => {
 
-		this.bot.hears('English', async (ctx) => {
+			// 	await ctx.reply('Choose appointment language', Markup.keyboard([['Turkish', 'English']]).resize()).catch(error => console.log(error))
+			// }, 1000)
       englishTypeScene.setBotCtx(ctx);
 
-			await ctx.scene.enter('englishTypeScene').catch(err => console.log(err))
+      await ctx.scene.enter('englishTypeScene').catch(err => console.log(err))
 		})
-
-		this.bot.hears('Turkish', async (ctx) => {
-      turkishTypeScene.setBotCtx(ctx);
-
-      await ctx.scene.enter('turkishTypeScene').catch(err => console.log(err))
-		})
+    //
+		// this.bot.hears('English', async (ctx) => {
+    //   englishTypeScene.setBotCtx(ctx);
+    //
+		// 	await ctx.scene.enter('englishTypeScene').catch(err => console.log(err))
+		// })
+    //
+		// this.bot.hears('Turkish', async (ctx) => {
+    //   turkishTypeScene.setBotCtx(ctx);
+    //
+    //   await ctx.scene.enter('turkishTypeScene').catch(err => console.log(err))
+		// })
 
 		this.bot.launch().then(() => {
 			console.log('bot is start')

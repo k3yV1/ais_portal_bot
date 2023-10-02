@@ -1,8 +1,9 @@
-const { Scenes } = require('telegraf');
+const { Scenes, Markup } = require('telegraf');
 const { Builder, By, Key, until, Select} = require('selenium-webdriver')
 const {MONTHS} = require("../../config/month");
-const {getDateIntervals} = require('../../config/helpers');
+const {getDateIntervals, chunkArray} = require('../../config/helpers');
 const cities = require("../../config/cities");
+const countries = require("../../config/countries");
 const Cron = require("../../cron");
 // islamberdiev18@gmail.com
 // Welcome123!
@@ -28,11 +29,11 @@ class WizardEnglishScene {
     }
 
     this.storage[userID].botCTX = ctx;
-    this.storage[userID].cron = new Cron({time: '*/10 * * * *'});
+    this.storage[userID].cron = new Cron({time: '*/2 * * * *'});
   }
 
   async commandMiddleware(botCTX, text) {
-    if(!text.includes('/')) return {status: true};
+    if(!text?.includes('/')) return {status: true};
     console.log("commandMiddleware");
 
     return this.quitScene(botCTX);
@@ -52,9 +53,26 @@ class WizardEnglishScene {
   }
 
   sceneMethods() {
+    const chooseCountry = async (ctx) => {
+      const countriesMarkup = Object.entries(countries)?.map(([key,value]) => {
+        return {
+          text: key,
+          callback_data: value,
+        };
+      });
+
+      await ctx.reply('1. Choose country', Markup.inlineKeyboard(chunkArray(countriesMarkup, 3))).catch(error => console.log(error))
+
+      return ctx.wizard.next();
+    }
     const enterLogin = async (ctx) => {
-      await ctx.reply('Enter login');
-      // ctx.wizard.state
+      const {status} = await this.commandMiddleware(ctx, ctx?.message?.text);
+
+      if(!status) return;
+
+      ctx.session.country = ctx.update.callback_query.data;
+
+      await ctx.reply('2. Enter login');
 
       return ctx.wizard.next();
     }
@@ -65,24 +83,9 @@ class WizardEnglishScene {
       if(!status) return;
 
       ctx.session.login = ctx.message.text;
-      await ctx.reply('Enter password');
 
-      return ctx.wizard.next();
-    }
+      await ctx.reply('3. Enter password');
 
-    const enterCity = async (ctx) => {
-      const {status} = await this.commandMiddleware(ctx, ctx.message.text);
-
-      if(!status) return;
-
-      ctx.session.password = ctx.message.text;
-
-      const citiesData = cities.map((city, index) => {
-        const breakChar = index % 2 === 0 ? '               ' : '\n\n';
-
-        return `<code>${city}</code>${breakChar}`;
-      }).join('');
-      await ctx.replyWithHTML(`Choose city:\n\n${citiesData}`);
       return ctx.wizard.next();
     }
 
@@ -91,8 +94,10 @@ class WizardEnglishScene {
 
       if(!status) return;
 
-      ctx.session.city = ctx.message.text;
-      await ctx.reply('Enter appointment period in format dd.mm.yyyy-dd.mm.yyyy');
+      ctx.session.password = ctx.message.text;
+
+      await ctx.reply('4. Enter appointment period in format dd.mm.yyyy-dd.mm.yyyy');
+
       return ctx.wizard.next();
     }
 
@@ -103,40 +108,53 @@ class WizardEnglishScene {
 
       ctx.session.period = ctx.message.text;
 
-      await ctx.reply('Enter for how many days stop searching appointment');
+      await ctx.reply('5. Enter for how many days bot need to stop searching appointment');
+
       return ctx.wizard.next();
     }
 
     const connectToSelenium = async (ctx) => {
       const userID = ctx.from.id;
+
       const {status} = await this.commandMiddleware(ctx, ctx.message.text);
 
       if(!status) return;
 
       ctx.session.stopDays = ctx.message.text;
 
+      const country = ctx.session.country;
       const login = ctx.session.login;
       const password = ctx.session.password;
-      const period = ctx.session.period;
-      const city = ctx.session.city;
-      const stopDays = ctx.session.stopDays;
 
       this.storage[userID].driver = new Builder().forBrowser('chrome').build()
 
-      this.openWebSite(ctx, {login, password, period, city, stopDays});
+      this.openWebSite(ctx, {login, password, country});
 
       return ctx.wizard.next();
     }
 
-    const setTime = async (ctx) => {
-      const userID = ctx.from.id;
-      console.log("setTime", userID);
-      const {status} = await this.commandMiddleware(ctx, ctx.message.text);
+    const setCity = async (ctx) => {
+      const {status} = await this.commandMiddleware(ctx, ctx?.message?.text);
 
       if(!status) return;
 
-      // if(ctx.wizard.state.dateTime) {
-        const dateTime = ctx.message.text;
+      if(ctx.session.city) return ctx.wizard.next();
+
+      ctx.session.city = ctx.update.callback_query.data;
+
+      await this.getAppointmentDatesWithCitySelect(ctx);
+
+      return ctx.wizard.next();
+    }
+
+
+    const setTime = async (ctx) => {
+      const userID = ctx.from.id;
+      const {status} = await this.commandMiddleware(ctx, ctx?.message?.text);
+
+      if(!status) return;
+
+      const dateTime = ctx.update.callback_query.data;;
         const [date,time] = dateTime.split('|');
 
         const sectionDate = await this.storage[userID].driver.findElement(By.id('appointments_consulate_appointment_date_input'));
@@ -188,15 +206,80 @@ class WizardEnglishScene {
       await this.quitScene(ctx);
     }
 
-    return [enterLogin, enterPassword, enterCity, enterDatePeriod, enterStopSearch, connectToSelenium, setTime];
+    return [chooseCountry, enterLogin, enterPassword, enterDatePeriod, enterStopSearch, connectToSelenium, setCity, setTime];
   }
 
-  async openWebSite(botCTX, {login, password, period, city, needAuth = true, stopDays}) {
+  async getAppointmentDatesWithCitySelect(ctx) {
+    const userID = ctx.from.id;
+
+    const city = ctx.session.city;
+    const country = ctx.session.country;
+    const login = ctx.session.login;
+    const password = ctx.session.password;
+    const period = ctx.session.period;
+    const stopDays = ctx.session.stopDays;
+
+    const select = new Select(this.storage[userID].driver.findElement(By.id("appointments_consulate_appointment_facility_id")));
+    select.selectByVisibleText(city);
+
+    await this.storage[userID].driver.sleep(2500);
+
+    const sectionDate = await this.storage[userID].driver.findElement(By.id('appointments_consulate_appointment_date_input'));
+    await sectionDate.click();
+    await this.storage[userID].driver.sleep(750);
+
+    const [startDate,endDate] = period?.split('-');
+    const intervalDates = getDateIntervals(startDate,endDate);
+
+    const datesArr = [];
+
+    for (const date of intervalDates) {
+      const {status = 'fail'} = await this.datepickerSearch(ctx, date);
+      await this.storage[userID].driver.sleep(3000);
+
+      if(status === 'success') {
+        const select =  new Select(this.storage[userID].driver.findElement(By.id("appointments_consulate_appointment_time")));
+        const options = await select.getOptions();
+
+        // const optionValues = [];
+
+        for (const option of options) {
+          const time = await option.getText();
+
+          if(!time) continue;
+
+          // optionValues.push(`${date}|${time}`);
+          datesArr.push(`${date}|${time}`);
+        }
+
+        // datesArr.push(optionValues);
+
+        const sectionDate = await this.storage[userID].driver.findElement(By.id('appointments_consulate_appointment_date_input'));
+        await sectionDate.click();
+        await this.storage[userID].driver.sleep(750);
+      }
+    }
+
+    if(datesArr.length) {
+      // const botAdaptedData = datesArr?.map((optionValues) => optionValues?.map((value) => `\n<code>${value}</code>`).join('')).join('\n');
+      const availableDatesMarkup = datesArr?.map((value) => ({text: value, callback_data: value}));
+      console.log(availableDatesMarkup);
+      await this.storage[userID].botCTX.reply(`7. Choose one of the available dates`,  Markup.inlineKeyboard(chunkArray(availableDatesMarkup, 2)).resize()).catch(error => console.log(error));
+
+      this.storage[userID].cron.stop();
+    } else {
+      this.storage[userID].cron.start(() => this.openWebSite(ctx,{login, password, country, city, needAuth: false}), {period, stopDays})
+
+      await this.storage[userID].botCTX.replyWithHTML(`<b>Available dates for appointment not found :(</b>`);
+    }
+  }
+
+  async openWebSite(botCTX, {login, password, country, needAuth = true, city}) {
     const userID = botCTX.from.id;
 
     try {
       await this.storage[userID].driver.get('https://ais.usvisa-info.com/en-us/countries_list/niv')
-      await this.storage[userID].driver.findElement(By.xpath("//a[@href='/en-tr/niv']")).click();
+      await this.storage[userID].driver.findElement(By.xpath(`//a[@href='/en-${country}/niv']`)).click();
 
       if(needAuth) {
         await this.storage[userID].driver.findElement(By.linkText('Sign In')).click();
@@ -208,6 +291,7 @@ class WizardEnglishScene {
 
         await this.storage[userID].driver.sleep(2000)
       }
+
       const cardElementsFromSite = await this.storage[userID].driver.findElements(By.className('alert application card ready_to_schedule'))
 
       const links = [];
@@ -245,53 +329,24 @@ class WizardEnglishScene {
           await this.storage[userID].driver.executeScript("arguments[0].style.backgroundColor = 'red';", sectionLocation);
 
           await this.storage[userID].driver.sleep(2500);
+
           const select = new Select(this.storage[userID].driver.findElement(By.id("appointments_consulate_appointment_facility_id")));
-          select.selectByVisibleText(city);
+          const selectOptions = await select.getOptions();
 
-          await this.storage[userID].driver.sleep(2500);
+          const optionValuesMarkup = [];
 
-          const sectionDate = await this.storage[userID].driver.findElement(By.id('appointments_consulate_appointment_date_input'));
-          await sectionDate.click();
-          await this.storage[userID].driver.sleep(750);
+          for (const option of selectOptions) {
+            const value = await option.getText();
 
-          const [startDate,endDate] = period?.split('-');
-          const intervalDates = getDateIntervals(startDate,endDate);
+            if(!value) continue;
 
-          const datesArr = [];
-
-          for (const date of intervalDates) {
-            const {status = 'fail'} = await this.datepickerSearch(botCTX, date);
-            await this.storage[userID].driver.sleep(3000);
-
-            if(status === 'success') {
-              const select = await this.storage[userID].driver.findElement(By.id('appointments_consulate_appointment_time'));
-              const options = await select.findElements(By.xpath(".//option"));
-
-              const optionValues = [];
-
-              for (const option of options) {
-                const time = await option.getText();
-
-                if(!time) continue;
-
-                optionValues.push(`${date}|${time}`);
-              }
-
-              datesArr.push(optionValues);
-
-              const sectionDate = await this.storage[userID].driver.findElement(By.id('appointments_consulate_appointment_date_input'));
-              await sectionDate.click();
-              await this.storage[userID].driver.sleep(750);
-            }
+            optionValuesMarkup.push({text: value, callback_data: value});
           }
 
-          if(datesArr.length) {
-            const botAdaptedData = datesArr?.map((optionValues) => optionValues?.map((value) => `\n<code>${value}</code>`).join('')).join('\n');
-            await this.storage[userID].botCTX.replyWithHTML(`<b>Доступные даты для записи:</b>\n${botAdaptedData}`);
-            this.storage[userID].cron.stop();
+          if(!city) {
+            await this.storage[userID].botCTX.reply('6. Choose city', Markup.inlineKeyboard(chunkArray(optionValuesMarkup, 3))).catch(error => console.log(error))
           } else {
-            this.storage[userID].cron.start(() => this.openWebSite(botCTX,{login, password, period, city, needAuth: false, stopDays}), {period, stopDays})
-            await this.storage[userID].botCTX.replyWithHTML(`<b>Свободного времени по данному диапазону не найдено :(</b>`);
+            await this.getAppointmentDatesWithCitySelect(botCTX);
           }
 
           // await this.driver.sleep(30000); // 30 sec
