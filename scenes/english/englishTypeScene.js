@@ -264,7 +264,7 @@ class WizardEnglishScene {
       // const botAdaptedData = datesArr?.map((optionValues) => optionValues?.map((value) => `\n<code>${value}</code>`).join('')).join('\n');
       const availableDatesMarkup = datesArr?.map((value) => ({text: value, callback_data: value}));
       console.log(availableDatesMarkup);
-      await this.storage[userID].botCTX.reply(`7. Choose one of the available dates`,  Markup.inlineKeyboard(chunkArray(availableDatesMarkup, 2)).resize()).catch(error => console.log(error));
+      await this.storage[userID].botCTX.reply(`7. Choose one of the available dates`,  Markup.inlineKeyboard(chunkArray(availableDatesMarkup, 2))).catch(error => console.log(error));
 
       this.storage[userID].cron.stop();
     } else {
